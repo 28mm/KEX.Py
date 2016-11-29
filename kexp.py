@@ -2,16 +2,55 @@
 
 import json
 from urllib import request
+import pprint
+import sys
 
 from bs4 import BeautifulSoup
 import spotipy
+import spotipy.util as util
+
 
 def main():
+
+    if len(sys.argv) < 1:
+        sys.exit(1)
+    username = sys.argv[1]
+
     radio  = kexp()
     tracks = radio.current_tracks()
     print(tracks)
 
+    sp = spotify_wrapper(username)
 
+    for t in tracks:
+        print(str(t.artist) + ' ' + str(t.title) + '\t' + sp.track_id(t))
+
+class spotify_wrapper:
+
+    def __init__(self, username):
+        self.username = username
+        self.token = util.prompt_for_user_token(self.username)
+
+        ## FIXME Don't do this here.
+        if self.token is None:
+            sys.exit(1)
+
+        self.sp = spotipy.Spotify(auth=self.token)
+
+    def track_id(self, t):
+        if t.artist is None or t.title is None:
+            return None
+        result = self.sp.search(str(t.artist) + ' ' + str(t.title),
+                                type='track')
+
+        ## FIXME: Log debug msgs somewhere
+        #pprint.pprint(result['tracks']['items'][0]['id'])
+        #sys.exit(0)
+
+        try:
+            return result['tracks']['items'][0]['id']
+        except:
+            return ''
 
 
 class track:
