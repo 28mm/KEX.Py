@@ -23,13 +23,18 @@ def main():
     sp = spotify_wrapper(username)
 
     for t in tracks:
-        print(str(t.artist) + ' ' + str(t.title) + '\t' + sp.track_id(t))
+        t.sid = sp.track_id(t)
+        print(str(t.artist) + ' ' + str(t.title) + '\t' + t.sid)
+
+    playlist_id = sp.create_playlist('90s Ephemera')
+    sp.playlist_add(playlist_id, tracks)
 
 class spotify_wrapper:
 
     def __init__(self, username):
         self.username = username
-        self.token = util.prompt_for_user_token(self.username)
+        self.token = util.prompt_for_user_token(self.username,
+                                                scope='playlist-modify-public')
 
         ## FIXME Don't do this here.
         if self.token is None:
@@ -38,6 +43,8 @@ class spotify_wrapper:
         self.sp = spotipy.Spotify(auth=self.token)
 
     def track_id(self, t):
+        """Search spotify for a track (by: artist and title).
+        Return its sid as a string."""
         if t.artist is None or t.title is None:
             return None
         result = self.sp.search(str(t.artist) + ' ' + str(t.title),
@@ -53,11 +60,24 @@ class spotify_wrapper:
             return ''
 
 
+    def create_playlist(self, title):
+        "Create a playlist and return its id as a string"
+        playlist = self.sp.user_playlist_create(self.username, title)
+        pprint.pprint(playlist)
+        return playlist['id']
+
+    def playlist_add(self, playlist_id, tracks):
+        """Take a list of tracks, and adds them to a given playlist.
+        Silently ignore tracks for which we don't have spotify ids (sid)"""
+        tracks = [ track.sid for track in tracks if track.sid is not '' ]
+        self.sp.user_playlist_add_tracks(self.username, playlist_id, tracks)
+
 class track:
-    def __init__(self, artist='', title='', label=''):
+    def __init__(self, artist='', title='', label='', sid=''):
         self.artist = artist
         self.title  = title
         self.label  = label
+        self.sid    = sid
 
     def __str__(self):
         return '[' + str(self.artist) + ' | ' \
