@@ -5,7 +5,7 @@ The Seattle radio station KEXP (90.3) limits the availability of archived progra
 ## Installation and Setup
 
 ```bash
-$ git clone ...
+$ git clone https://github.com/28mm/KEX.Py.git
 $ cd KEX.Py
 $ pip3 install -r requirements.txt
 ```
