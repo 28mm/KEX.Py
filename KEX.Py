@@ -49,6 +49,10 @@ def main():
                         metavar='playlist',
                         required=True) # <-- FIXME just generate a default
 
+    parser.add_argument('--always_create_new_playlist',
+                        dest='always_create_new_playlist',
+                        action='store_true')
+
     args = parser.parse_args()
     username = args.username
 
@@ -63,6 +67,8 @@ def main():
         month = date.strftime('%m')
         day   = date.strftime('%d')
         year  = date.strftime('%Y')
+    
+    always_create_new_playlist = args.always_create_new_playlist
 
     radio  = kexp()
 
@@ -81,15 +87,30 @@ def main():
 
     sp = spotify_wrapper(username)
 
-    print('**** BUILDING PLAYLIST: "' + args.playlist + '" ****')
+    print('**** MATCHING TRACKS PLAYED ON KEXP for ' + date.strftime('%a %b %d, %Y') + ' ****') # FIXME: include time
     for t in tracks:
         t.sid = sp.track_id(t)
         if t.sid:
             print('FOUND:   ' + str(t.artist) + ' ' + str(t.title))
         else:
             print('MISSING: ' + str(t.artist) + ' ' + str(t.title))
-    playlist_id = sp.create_playlist(args.playlist)
-    sp.playlist_add(playlist_id, tracks)
+    
+    # Use existing playlist if exists and user wants to add to it; otherwise create new playlist
+    if not always_create_new_playlist:  # FIXME: find a more elegant way of structuring this
+        print('**** SEARCHING FOR PLAYLIST: "' + args.playlist + '" ****')
+        playlist_id = sp.search_playlist(args.playlist)
+        if playlist_id is not None:
+            print('**** FOUND IT! ****')
+        else:
+            print('**** CREATING PLAYLIST: "' + args.playlist + '" ****')
+            playlist_id = sp.create_playlist(args.playlist)
+    else:
+        print('**** CREATING PLAYLIST: "' + args.playlist + '" ****')
+        playlist_id = sp.create_playlist(args.playlist)
+    
+    # add tracks to playlist
+    print('**** ADDING FOUND TRACKS TO PLAYLIST: "' + args.playlist + '" ****')
+    sp.playlist_add(playlist_id, tracks) # FIXME Handle duplicate tracks appropriately
 
 class spotify_wrapper:
 
@@ -123,7 +144,18 @@ class spotify_wrapper:
 
     def search_playlist(self, title):
         "Find a playlist whose title matches and return its id as a string"
-        raise # FIXME
+        # Fetch playlists from spotipy
+        playlists = self.sp.user_playlists(self.username)
+        
+        # Enumerate playlist items and search for title (accounting for pagination) # FIXME Cleaner implementation?
+        while playlists:
+            for i, playlist in enumerate(playlists['items']):
+                if playlist['name'] == title:                    
+                    return playlist['id']
+            if playlists['next']:
+                playlists = self.sp.next(playlists)
+            else:
+                return None
 
     def create_playlist(self, title):
         "Create a playlist and return its id as a string"
