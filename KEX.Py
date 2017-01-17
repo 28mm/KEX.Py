@@ -96,15 +96,14 @@ def main():
             print('MISSING: ' + str(t.artist) + ' ' + str(t.title))
     
     # Use existing playlist if exists and user wants to add to it; otherwise create new playlist
-    if not always_create_new_playlist:  # FIXME: find a more elegant way of structuring this
+    playlist_id = None
+    if not always_create_new_playlist:
         print('**** SEARCHING FOR PLAYLIST: "' + args.playlist + '" ****')
         playlist_id = sp.search_playlist(args.playlist)
         if playlist_id is not None:
             print('**** FOUND IT! ****')
-        else:
-            print('**** CREATING PLAYLIST: "' + args.playlist + '" ****')
-            playlist_id = sp.create_playlist(args.playlist)
-    else:
+    
+    if playlist_id is None: 
         print('**** CREATING PLAYLIST: "' + args.playlist + '" ****')
         playlist_id = sp.create_playlist(args.playlist)
     
