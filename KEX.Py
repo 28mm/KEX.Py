@@ -119,7 +119,7 @@ class spotify_wrapper:
         try:
             return result['tracks']['items'][0]['id']
         except:
-            return ''
+            return None
 
     def search_playlist(self, title):
         "Find a playlist whose title matches and return its id as a string"
@@ -134,7 +134,7 @@ class spotify_wrapper:
     def playlist_add(self, playlist_id, tracks):
         """Take a list of tracks, and adds them to a given playlist.
         Silently ignore tracks for which we don't have spotify ids (sid)"""
-        tracks = [ track.sid for track in tracks if track.sid is not '' ]
+        tracks = [ track.sid for track in tracks if track.sid is not None ]
         self.sp.user_playlist_add_tracks(self.username, playlist_id, tracks)
 
 class track:
