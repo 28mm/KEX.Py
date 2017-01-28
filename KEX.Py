@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
 import json
-from urllib import request
+import requests
 import pprint
 import sys
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta, timezone, tzinfo
 
-from bs4 import BeautifulSoup
 import spotipy
 import spotipy.util as util
 
@@ -21,27 +20,17 @@ def main():
                         metavar='username',
                         required=True)
 
-    # 
-    parser.add_argument('--day',
-                        dest='day',
-                        metavar='day',
+    # start date time    
+    parser.add_argument('--mdyh',
+                        dest='mdyh',
+                        metavar='mdyh',
                         required=False)
 
-    parser.add_argument('--weeks',
-                        dest='weeks',
-                        metavar='weeks',
-                        default=1,
-                        required=False)
-
-    # 
-    parser.add_argument('--mdy',
-                        dest='mdy',
-                        metavar='mdy',
-                        required=False)
-
-    parser.add_argument('--hour',
-                        dest='hour',
-                        metavar='hour',
+    # number of hours to get playlist for; default to 3 hours
+    parser.add_argument('--hours',
+                        dest='hours',
+                        metavar='hours',
+                        default=3,
                         required=False)
 
     parser.add_argument('--playlist',
@@ -55,45 +44,46 @@ def main():
 
     args = parser.parse_args()
     username = args.username
-
-    if args.hour is not None:
-        hour = args.hour # FIXME check bounds.
-
-        if args.mdy is not None:
-            date  = datetime.strptime(args.mdy, '%m/%d/%Y')
-        else:
-            date  = datetime.now()
-
-        month = date.strftime('%m')
-        day   = date.strftime('%d')
-        year  = date.strftime('%Y')
-    
     always_create_new_playlist = args.always_create_new_playlist
-
-    radio  = kexp()
-
-    if args.hour is not None or args.mdy is not None:
-        hours = args.hour.split('-')
-        tracks = []
-        if len(hours) > 1:
-            for h in range(int(hours[0]), int(hours[1])):
-                tracks += radio.past_tracks(year, month, day, h)
-        else:
-            tracks = radio.past_tracks(year, month, day, hour)
+    
+    # Create datetime representation of time interval
+    # Use current datetime if one not provided in args
+    # FIXME should specify pacific timezone on this. currently assumes local
+    if args.mdyh is not None:
+        start_datetime = datetime.strptime(args.mdyh, '%m/%d/%Y %H')
     else:
-        tracks = radio.current_tracks()
+        start_datetime = datetime.now()  # FIXME this will be a bug because end_time will be in the future
+    
+    num_of_hours = int(args.hours)
+    if num_of_hours is not None and num_of_hours > 0:   # FIXME confirm failure if args.hours is not an int
+        end_datetime = start_datetime + timedelta(hours=num_of_hours)
+    else:
+        sys.exit(1) # FIXME include error message
 
-    #print(tracks)
+    # Get track instances for the time interval
+    radio  = kexp()
+    print('**** FETCHING KEXP PLAYLIST FOR ' + 
+        start_datetime.strftime('%a %b %d, %Y %H:%M') + ' to ' + 
+        end_datetime.strftime('%a %b %d, %Y %H:%M'))
+    tracks = radio.get_tracks(datetime.utcfromtimestamp(start_datetime.timestamp()), 
+                                datetime.utcfromtimestamp(end_datetime.timestamp()))
+    
+    # Check that we have tracks, KEXP cache can get stale sometimes 
+    # debug: http://cache.kexp.org/cache/info
+    if len(tracks) == 0: 
+        print('No tracks found for: ' + start_datetime.strftime('%a %b %d, %Y %H:%M'))
+        print('Perhaps the KEXP cache is stale? http://cache.kexp.org/cache/info')  # FIXME lookup cache stats and offer evaluation
+        sys.exit(0)
 
+    # Lookup tracks in Spotify
     sp = spotify_wrapper(username)
-
-    print('**** MATCHING TRACKS PLAYED ON KEXP for ' + date.strftime('%a %b %d, %Y') + ' ****') # FIXME: include time
+    print('**** MATCHING TRACKS AGAINST SPOTIFY ****')
     for t in tracks:
         t.sid = sp.track_id(t)
         if t.sid:
-            print('FOUND:   ' + str(t.artist) + ' ' + str(t.title))
+            print('FOUND:   ' + str(t.artist) + ' - ' + str(t.title))
         else:
-            print('MISSING: ' + str(t.artist) + ' ' + str(t.title))
+            print('MISSING: ' + str(t.artist) + ' - ' + str(t.title))
     
     # Use existing playlist if exists and user wants to add to it; otherwise create new playlist
     playlist_id = None
@@ -148,7 +138,7 @@ class spotify_wrapper:
         
         # Enumerate playlist items and search for title (accounting for pagination) # FIXME Cleaner implementation?
         while playlists:
-            for i, playlist in enumerate(playlists['items']):
+            for playlist in playlists['items']:
                 if playlist['name'] == title:                    
                     return playlist['id']
             if playlists['next']:
@@ -184,62 +174,34 @@ class track:
         return self.__str__()
 
 class kexp:
-
     #
     # Treat as public methods
 
     def __init__(self):
-        self.KEXP_BASE_URL = 'http://www.kexp.org/playlist'
+        #self.KEXP_BASE_URL = 'http://www.kexp.org/playlist'
+        self.KEXP_BASE_URL = 'http://cache.kexp.org/cache/plays'
 
-    def current_tracks(self):
+    def get_tracks(self, start_datetime_utc, end_datetime_utc): 
         tracks = []
-        for elt in self.current_playlist_soup():
-            track_json = json.loads(elt['data-playlistitem'])
-            tracks.append( track(artist=track_json['ArtistName'],
-                                 title=track_json['TrackName'],
-                                 label=track_json['LabelName']))
+
+        request_details = { 'startTime': start_datetime_utc.isoformat(timespec='minutes'),
+                            'endTime': end_datetime_utc.isoformat(timespec='minutes'), 
+                            'channel': '1'}
+        r = requests.get(self.KEXP_BASE_URL, params=request_details) 
+
+        # FIXME Check for HTTP 200 response
+
+        # parse json track listings
+        playlist_json = r.json()
+
+        # for each track, create a track instance and add to array
+        for track_listing in playlist_json['Plays']:
+            # ignore air breaks  # FIXME What are the other track listing types?
+            if track_listing['Type'] == 1:
+                if track_listing['Artist'] is not None and track_listing['Track'] is not None:
+                    tracks.append(track(artist=track_listing['Artist']['Name'], 
+                                        title=track_listing['Track']['Name']))
         return tracks
-
-    def past_tracks(self, year, month, day, hour):
-        tracks = []
-        for elt in self.past_playlist_soup(year, month, day, hour):
-            track_json = json.loads(elt['data-playlistitem'])
-            tracks.append( track(artist=track_json['ArtistName'],
-                                 title=track_json['TrackName'],
-                                 label=track_json['LabelName']))
-        return tracks
-    #
-    # Treat as class-private:
-
-    def current_playlist_soup(self):
-        soup = BeautifulSoup(self.current_playlist_html(), 'html.parser')
-        return [ elt for elt in soup.find_all('div', class_='Play') ]
-
-    def past_playlist_soup(self, year, month, day, hour):
-        soup = BeautifulSoup(self.past_playlist_html(year, month, day, hour),
-                             'html.parser')
-        return [ elt for elt in soup.find_all('div', class_='Play') ]
-
-
-    def current_playlist_html(self):
-        response = request.urlopen(self.KEXP_BASE_URL)
-        return response
-
-    def past_playlist_html(self, year, month, day, hour):
-        #print(str(year) + ' ' + str(month) + ' ' + str(day) + ' ' + str(hour))
-        #print(self.KEXP_BASE_URL + '/' + str(year)         \
-        #                       + '/' + str(month)                      \
-        #                       + '/' + str(day)                        \
-        #                       + '/' + (str(hour) + 'AM'               \
-        #                                    if int(hour) < 13               \
-        #                                    else str(int(hour)-12) + 'PM'))
-        response = request.urlopen(self.KEXP_BASE_URL + '/' + str(year)         \
-                               + '/' + str(month)                      \
-                               + '/' + str(day)                        \
-                               + '/' + (str(hour) + 'AM'               \
-                                            if int(hour) < 13               \
-                                            else str(int(hour)-12) + 'PM'))
-        return response
 
 
 if __name__ == '__main__': main()
