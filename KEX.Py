@@ -23,19 +23,22 @@ def main():
     # start date time    
     parser.add_argument('--mdyh',
                         dest='mdyh',
-                        metavar='mdyh',
+                        help='Example: --mdyh \"01/31/2017T18\"',
+                        metavar='\"mm/dd/yyyyThh\"',
                         required=False)
 
     # number of hours to get playlist for; default to 3 hours
     parser.add_argument('--hours',
                         dest='hours',
-                        metavar='hours',
+                        metavar='num_of_hours',
+                        help='Number of hours of KEXP playlist to grab.  Default = 3 hours',
                         default=3,
                         required=False)
 
     parser.add_argument('--playlist',
                         dest='playlist',
                         metavar='playlist',
+                        help='Spotify playlist name',
                         required=True) # <-- FIXME just generate a default
 
     parser.add_argument('--always_create_new_playlist',
@@ -50,9 +53,9 @@ def main():
     # Use current datetime if one not provided in args
     # FIXME should specify pacific timezone on this. currently assumes local
     if args.mdyh is not None:
-        start_datetime = datetime.strptime(args.mdyh, '%m/%d/%Y %H')
+        start_datetime = datetime.strptime(args.mdyh, '%m/%d/%YT%H') # FIXME check start date is in the past otherwise no songs will be returned
     else:
-        start_datetime = datetime.now()  # FIXME this will be a bug because end_time will be in the future
+        start_datetime = datetime.now()  # FIXME this may be a bug because end_time will be in the future.  Check what happens on KEXP API
     
     num_of_hours = int(args.hours)
     if num_of_hours is not None and num_of_hours > 0:   # FIXME confirm failure if args.hours is not an int
@@ -68,11 +71,11 @@ def main():
     tracks = radio.get_tracks(datetime.utcfromtimestamp(start_datetime.timestamp()), 
                                 datetime.utcfromtimestamp(end_datetime.timestamp()))
     
-    # Check that we have tracks, KEXP cache can get stale sometimes 
-    # debug: http://cache.kexp.org/cache/info
+    # Check that we have tracks
+    # debug: KEXP cache can get stale somtimes, http://cache.kexp.org/cache/info
     if len(tracks) == 0: 
         print('No tracks found for: ' + start_datetime.strftime('%a %b %d, %Y %H:%M'))
-        print('Perhaps the KEXP cache is stale? http://cache.kexp.org/cache/info')  # FIXME lookup cache stats and offer evaluation
+        print('Perhaps the KEXP cache is stale? See http://cache.kexp.org/cache/info')  # FIXME lookup cache stats and offer evaluation
         sys.exit(0)
 
     # Lookup tracks in Spotify

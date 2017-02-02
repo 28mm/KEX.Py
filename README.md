@@ -14,11 +14,11 @@ Obtain a Spotify client ID and secret from https://developer.spotify.com/my-appl
 
 ## Running KEX.Py
 
-The KEXP program Shake the Shack airs every Friday between six and nine. To build a playlist entitled "Shake the Shack" from the December 30th KEXP playlist, run the following:
+The KEXP program Shake the Shack airs every Friday between six and nine PM. To build a playlist entitled "Shake the Shack" from the December 30th KEXP playlist, run the following:
 
 ```
 $ source spotipy-env.sh
-$ ./KEX.Py --username <your-username> --playlist "Shake the Shack" --mdy 12/30/2016 --hour 18-21
+$ ./KEX.Py --username <your-username> --playlist "Shake the Shack" --mdyh "12/30/2016T18" --hours 3
 ```
 
 
